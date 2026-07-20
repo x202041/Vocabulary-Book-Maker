@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>多言語対応 単語帳作成・検索アプリ</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 850px;
+            margin: 20px auto;
+            padding: 0 15px;
+            color: #333;
+            line-height: 1.5;
+        }
+        h1, h2 { border-bottom: 2px solid #333; padding-bottom: 5px; }
+        
+        /* フォーム関連 */
+        .form-group { margin-bottom: 12px; }
+        label { display: block; font-weight: bold; margin-bottom: 4px; }
+        input[type="text"], textarea, select {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+            font-size: 14px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        textarea { height: 60px; resize: vertical; }
+        .required { color: red; margin-left: 4px; }
+        
+        button {
+            padding: 8px 16px;
+            font-size: 14px;
+            cursor: pointer;
+            border: 1px solid #aaa;
+            border-radius: 4px;
+            background-color: #f0f0f0;
+        }
+        button:hover { background-color: #e0e0e0; }
+        .btn-submit {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            font-weight: bold;
+            width: 100%;
+            padding: 10px;
+        }
+        .btn-submit:hover { background-color: #218838; }
+
+        /* 削除ボタン */
+        .btn-delete {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 4px 10px;
+            font-size: 12px;
+            border-radius: 4px;
+        }
+        .btn-delete:hover { background-color: #c82333; }
+
+        /* 検索・コントロールエリア */
+        .control-box {
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .search-row, .json-row, .sort-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .search-row input { flex: 1; }
+
+        /* カード表示 */
+        .word-card {
+            border: 1px solid #e0e0e0;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            background: #fafafa;
+        }
+        .word-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .word-head { font-size: 1.1em; font-weight: bold; color: #0056b3; }
+        .score-badge { color: #d9534f; font-weight: bold; margin-left: 8px; font-size: 0.9em; }
+        .word-meta { color: #666; font-size: 0.9em; margin-top: 4px; }
+        .word-example { font-style: italic; color: #444; margin-top: 4px; font-size: 0.9em; }
+
+        /* ページネーション */
+        .pagination {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>多言語対応 単語帳作成・検索ツール</h1>
+
+    <section>
+        <h2>新しい単語を登録</h2>
+        <form id="wordForm">
+            <div class="form-group">
+                <label>単語 <span class="required">*必須</span></label>
+                <input type="text" id="wordInput" required placeholder="例: apple / Bonjour / こんにちは">
+            </div>
+            <div class="form-group">
+                <label>和訳・意味 <span class="required">*必須</span></label>
+                <input type="text" id="jaInput" required placeholder="例: りんご / こんにちは">
+            </div>
+            <div class="form-group">
+                <label>備考 (任意)</label>
+                <input type="text" id="noteInput" placeholder="例: フランス語の挨拶 / 関連語: fruit">
+            </div>
+            <div class="form-group">
+                <label>例文 (任意)</label>
+                <textarea id="exampleInput" placeholder="例: Bonjour, comment ça va?"></textarea>
+            </div>
+            <div class="form-group">
+                <label>例文の和訳 (任意)</label>
+                <textarea id="exampleJaInput" placeholder="例: こんにちは、お元気ですか？"></textarea>
+            </div>
+            <button type="submit" class="btn-submit">単語帳に追加</button>
+        </form>
+    </section>
+
+    <section class="control-box">
+        <div class="json-row">
+            <button id="downloadBtn">JSONとしてダウンロード</button>
+            <button id="uploadTriggerBtn">JSONファイルをアップロード</button>
+            <input type="file" id="uploadInput" accept=".json" style="display: none;">
+        </div>
+
+        <hr style="border:0; border-top:1px solid #ddd; margin: 15px 0;">
+
+        <div class="search-row">
+            <input type="text" id="searchInput" placeholder="単語または和訳で検索 (一致度順に最大20件)">
+            <button id="searchBtn">検索</button>
+            <button id="clearSearchBtn">クリア</button>
+        </div>
+    </section>
+
+    <section>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h2 id="listTitle" style="border: none; margin: 0;">単語一覧</h2>
+            <div class="sort-row" style="margin: 0;">
+                <label for="sortOrder" style="margin: 0; font-weight: normal; font-size: 0.9em;">表示順:</label>
+                <select id="sortOrder" style="width: auto;">
+                    <option value="desc">新しい順 (デフォルト)</option>
+                    <option value="asc">古い順</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="pagination" id="paginationArea">
+            <button id="prevBtn">前へ</button>
+            <span id="pageInfo">1 / 1 ページ (全 0 件)</span>
+            <button id="nextBtn">次へ</button>
+        </div>
+
+        <div id="wordList"></div>
+    </section>
+
+    <script>
+        // データ保持用配列と状態管理
+        let dictionary = [];
+        let autoIncrementId = 1; // 登録順（ID）
+        
+        let currentPage = 1;
+        const ITEMS_PER_PAGE = 100;
+        
+        let searchResults = null; // 検索実行時は配列が入る（nullの場合は通常一覧表示）
+
+        // --- 部分文字列生成関数 (N-gram処理) ---
+        function getSubstrings(str, length) {
+            const substrings = [];
+            for (let i = 0; i <= str.length - length; i++) {
+                substrings.push(str.slice(i, i + length));
+            }
+            return substrings;
+        }
+
+        // 1. 単語登録処理
+        document.getElementById('wordForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+
+            const word = document.getElementById('wordInput').value.trim();
+            const ja = document.getElementById('jaInput').value.trim();
+            const note = document.getElementById('noteInput').value.trim();
+            const example = document.getElementById('exampleInput').value.trim();
+            const exampleJa = document.getElementById('exampleJaInput').value.trim();
+
+            if (!word || !ja) {
+                alert('単語と和訳は必須項目です。');
+                return;
+            }
+
+            dictionary.push({
+                order: autoIncrementId++,
+                word: word,  // en から word へ変更
+                ja: ja,
+                note: note,
+                example: example,
+                exampleJa: exampleJa
+            });
+
+            document.getElementById('wordForm').reset();
+            
+            // 検索をリセットして再描画
+            clearSearch();
+        });
+
+        // 2. あいまい検索処理 (単語 & 和訳 対象 / 最大20件)
+        document.getElementById('searchBtn').addEventListener('click', runSearch);
+        document.getElementById('searchInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') runSearch();
+        });
+
+        function runSearch() {
+            const rawQuery = document.getElementById('searchInput').value.trim();
+            if (!rawQuery) {
+                clearSearch();
+                return;
+            }
+
+            const query = rawQuery.toLowerCase();
+
+            // 一致度スコアリング計算
+            const scoredList = dictionary
+                .map(item => {
+                    let score = 0;
+                    // wordが未定義の場合（後方互換用）は en をフォールバック利用
+                    const targetWord = (item.word || item.en || '').toLowerCase();
+                    const targetJa = item.ja || '';
+
+                    // 完全一致・前方一致ボーナス
+                    if (targetWord === query || targetJa === query) {
+                        score += 100;
+                    } else if (targetWord.startsWith(query) || targetJa.startsWith(query)) {
+                        score += 50;
+                    }
+
+                    // subLength を 1 から 入力文字数まで回してスコア加算
+                    for (let subLength = 1; subLength <= query.length; subLength++) {
+                        const chunks = getSubstrings(query, subLength);
+                        let matchCount = 0;
+
+                        chunks.forEach(chunk => {
+                            if (targetWord.includes(chunk)) matchCount++;
+                            if (targetJa.includes(chunk)) matchCount++;
+                        });
+
+                        score += matchCount * (subLength * 2);
+                    }
+
+                    return { ...item, score };
+                })
+                .filter(item => item.score > 0)
+                .sort((a, b) => b.score - a.score);
+
+            // 上位最大20件に絞り込み
+            searchResults = scoredList.slice(0, 20);
+            render();
+        }
+
+        // 検索クリア
+        document.getElementById('clearSearchBtn').addEventListener('click', () => {
+            document.getElementById('searchInput').value = '';
+            clearSearch();
+        });
+
+        function clearSearch() {
+            searchResults = null;
+            currentPage = 1;
+            render();
+        }
+
+        // 3. 表示順切り替えイベント
+        document.getElementById('sortOrder').addEventListener('change', () => {
+            render();
+        });
+
+        // 4. 削除処理
+        function deleteWord(order) {
+            const isConfirmed = confirm('本当に削除しますか？');
+            if (isConfirmed) {
+                dictionary = dictionary.filter(item => item.order !== order);
+                
+                if (searchResults !== null) {
+                    searchResults = searchResults.filter(item => item.order !== order);
+                }
+
+                render();
+            }
+        }
+
+        // 5. 画面描画処理
+        function render() {
+            const listContainer = document.getElementById('wordList');
+            const paginationArea = document.getElementById('paginationArea');
+            const listTitle = document.getElementById('listTitle');
+            const sortOrder = document.getElementById('sortOrder').value;
+
+            listContainer.innerHTML = '';
+
+            // --- A. 検索結果の表示モード ---
+            if (searchResults !== null) {
+                listTitle.textContent = `検索結果 (${searchResults.length} 件 / 最大20件)`;
+                paginationArea.style.display = 'none';
+
+                if (searchResults.length === 0) {
+                    listContainer.innerHTML = '<p style="color:#888;">一致する単語が見つかりませんでした。</p>';
+                    return;
+                }
+
+                searchResults.forEach(item => {
+                    const card = document.createElement('div');
+                    card.className = 'word-card';
+                    const displayWord = item.word || item.en;
+                    card.innerHTML = `
+                        <div class="word-header">
+                            <div class="word-head">
+                                #${item.order} : ${displayWord} (${item.ja})
+                                <span class="score-badge">(一致度: ${item.score}pt)</span>
+                            </div>
+                            <button class="btn-delete" onclick="deleteWord(${item.order})">削除</button>
+                        </div>
+                        ${item.note ? `<div class="word-meta">備考: ${item.note}</div>` : ''}
+                        ${item.example ? `<div class="word-example">例文: ${item.example}</div>` : ''}
+                        ${item.exampleJa ? `<div class="word-example">和訳: ${item.exampleJa}</div>` : ''}
+                    `;
+                    listContainer.appendChild(card);
+                });
+                return;
+            }
+
+            // --- B. 通常の一覧表示モード ---
+            listTitle.textContent = '単語一覧';
+            paginationArea.style.display = 'flex';
+
+            const displayData = [...dictionary].sort((a, b) => {
+                return sortOrder === 'desc' ? b.order - a.order : a.order - b.order;
+            });
+
+            const totalItems = displayData.length;
+            const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE) || 1;
+
+            if (currentPage < 1) currentPage = 1;
+            if (currentPage > totalPages) currentPage = totalPages;
+
+            const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+            const pageData = displayData.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+            if (pageData.length === 0) {
+                listContainer.innerHTML = '<p style="color:#888;">登録されている単語はありません。</p>';
+            } else {
+                pageData.forEach(item => {
+                    const card = document.createElement('div');
+                    card.className = 'word-card';
+                    const displayWord = item.word || item.en;
+                    card.innerHTML = `
+                        <div class="word-header">
+                            <div class="word-head">#${item.order} : ${displayWord} (${item.ja})</div>
+                            <button class="btn-delete" onclick="deleteWord(${item.order})">削除</button>
+                        </div>
+                        ${item.note ? `<div class="word-meta">備考: ${item.note}</div>` : ''}
+                        ${item.example ? `<div class="word-example">例文: ${item.example}</div>` : ''}
+                        ${item.exampleJa ? `<div class="word-example">和訳: ${item.exampleJa}</div>` : ''}
+                    `;
+                    listContainer.appendChild(card);
+                });
+            }
+
+            // ページ情報更新
+            document.getElementById('pageInfo').textContent = `${currentPage} / ${totalPages} ページ (全 ${totalItems} 件)`;
+            document.getElementById('prevBtn').disabled = (currentPage === 1);
+            document.getElementById('nextBtn').disabled = (currentPage === totalPages);
+        }
+
+        // ページ移動イベント
+        document.getElementById('prevBtn').addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage--;
+                render();
+            }
+        });
+
+        document.getElementById('nextBtn').addEventListener('click', () => {
+            const totalPages = Math.ceil(dictionary.length / ITEMS_PER_PAGE);
+            if (currentPage < totalPages) {
+                currentPage++;
+                render();
+            }
+        });
+
+        // 6. JSONダウンロード
+        document.getElementById('downloadBtn').addEventListener('click', () => {
+            if (dictionary.length === 0) {
+                alert('ダウンロードするデータがありません。');
+                return;
+            }
+
+            const jsonStr = JSON.stringify(dictionary, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'dictionary_data.json';
+            a.click();
+            
+            URL.revokeObjectURL(url);
+        });
+
+        // 7. JSONアップロード（互換性変換処理付き）
+        const uploadInput = document.getElementById('uploadInput');
+        document.getElementById('uploadTriggerBtn').addEventListener('click', () => {
+            uploadInput.click();
+        });
+
+        uploadInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const importedData = JSON.parse(event.target.result);
+                    if (!Array.isArray(importedData)) throw new Error('配列形式ではありません。');
+
+                    // 旧形式 (en) のデータを自動で新形式 (word) に変換
+                    dictionary = importedData.map(item => {
+                        const wordValue = item.word || item.en || '';
+                        // en プロパティを削除して word に統一
+                        const { en, ...rest } = item;
+                        return {
+                            ...rest,
+                            word: wordValue
+                        };
+                    });
+                    
+                    const maxOrder = dictionary.reduce((max, item) => (item.order > max ? item.order : max), 0);
+                    autoIncrementId = maxOrder + 1;
+
+                    clearSearch();
+                    alert('JSONファイルの読み込みが完了しました！');
+                } catch (err) {
+                    alert('ファイルの読み込みに失敗しました: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
+            uploadInput.value = '';
+        });
+
+        // 初期表示
+        render();
+    </script>
+</body>
+</html>
